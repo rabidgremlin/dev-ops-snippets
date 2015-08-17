@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>80's band</title>
+</head>
+<body>
+<h1>And now for some 80's bands</h1>
+<p>
+
+<?php
+
+$db_host = "{{ db_host_name }}";
+$db_user = "{{ db.user }}";
+$db_password = "{{db.password }}";
+$db_name = "{{ db.name }}";
+
+$conn = new mysqli($db_host, $db_user, $db_password, $db_name);
+if ($conn->connect_error){
+  die("Unable to connect to DB: " . $conn->connect_error);
+}
+
+$sql = "SELECT * from names";
+$result = $conn->query($sql);
+
+if ($result->num_rows > 0){
+  while ($row = $result->fetch_assoc()){
+    echo $row["name"] . "<br>";
+  }
+} else {
+  echo "No names in database!";
+}
+
+?>
+</p>
+<p>Served by <?= gethostname() ?>
+</body>
+</html>

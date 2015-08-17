@@ -1,0 +1,93 @@
+
+- name: Configure Web servers
+  hosts: tag_type_webservers:&tag_env_{{ env }}
+  user: ubuntu
+  sudo: True
+  serial: "25%"
+  vars_files:
+    - "{{ env }}_vars.yml"
+
+  tasks:
+    - name: Get DB end point
+      set_fact: db_host_name="{{ groups[env+"-db"][0] }}"
+
+    - name: Check that req libraries are loaded for DB commands
+      apt: pkg={{item}} state=installed
+      with_items:
+        - python-mysqldb
+        - mysql-client
+
+    - name: Ensure that DB has been created (only runs once)
+      mysql_db:
+        name: "{{ db.name }}"
+        state: present
+        login_host: "{{ db_host_name }}"
+        login_user: "{{ db.user }}"
+        login_password: "{{db.password }}"
+      run_once: true
+      notify:
+        - Copy db script
+        - Create database
+
+    - name: Now processing instance
+      debug: msg="{{ ec2_id }}"
+
+    - name: Pull instance from elb
+      local_action:
+        module: ec2_elb
+        region: "{{ region }}"
+        ec2_elbs:
+          - "{{ env }}-lb"
+        instance_id: "{{ ec2_id }}"
+        state: absent
+      sudo: false
+
+    - name: Install Apache+PHP
+      apt: pkg={{item}} state=installed
+      with_items:
+        - apache2
+        - php5
+        - libapache2-mod-php5
+        - php5-mysqlnd
+      notify:
+        - Restart apache
+
+    - name: Enable PHP
+      apache2_module: name=php5 state=present
+
+    - name: Delete old index.html
+      file: path=/var/www/html/index.html state=absent
+
+    - name: Create index.php (with DB connection info burned in)
+      template: src=files/index.j2 dest=/var/www/html/index.php
+
+    - name: Copy info.php
+      copy: src=files/info.php dest=/var/www/html/info.php
+
+    - name: Check that Apache is running
+      service: name=apache2 state=started
+
+    - name: Add instance back into elb
+      local_action:
+        module: ec2_elb
+        region: "{{ region }}"
+        ec2_elbs: "{{ ec2_elbs }}"
+        instance_id: "{{ ec2_id }}"
+        state: present
+      sudo: false
+
+  handlers:
+    - name: Copy db script
+      copy: src=files/setup_db.sql dest=/tmp/setup_db.sql
+
+    - name: Create database
+      mysql_db:
+        name: "{{ db.name }}"
+        state: import
+        login_host: "{{ db_host_name }}"
+        login_user: "{{ db.user }}"
+        login_password: "{{db.password }}"
+        target: /tmp/setup_db.sql
+
+    - name: Restart apache
+      service: name=apache2 state=restarted

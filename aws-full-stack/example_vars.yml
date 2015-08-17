@@ -1,0 +1,20 @@
+---
+control_ip: 175.45.102.163/32
+
+region: ap-southeast-2
+zone_1: ap-southeast-2a
+zone_2: ap-southeast-2b
+
+
+server:
+  instance_type: t2.micro
+  zone_1_count: 1
+  zone_2_count: 1
+
+
+db:
+  instance_type: db.t2.micro
+  size: 5
+  name: rockbands
+  user: rockbands
+  password: password123

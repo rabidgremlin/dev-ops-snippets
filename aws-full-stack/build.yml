@@ -1,0 +1,209 @@
+---
+- name: Create AWS infrastructure
+  hosts: localhost
+  vars_files:
+    - "{{ env }}_vars.yml"
+
+  tasks:
+  - name: Create the VPC
+    ec2_vpc:
+      region: "{{ region }}"
+      internet_gateway: True
+      resource_tags: { Name: "{{ env}}-vpc", env: "{{ env }}" }
+      cidr_block: 10.0.0.0/16
+      subnets:
+        - cidr: 10.0.0.0/24
+          az: "{{ zone_1 }}"
+          resource_tags: {env: "{{ env }}", tier: web, az: 1, Name: "{{env}}_sn_web_1" }
+        - cidr: 10.0.1.0/24
+          az: "{{ zone_2 }}"
+          resource_tags: {env: "{{ env }}", tier: web, az: 2, Name: "{{env}}_sn_web_2" }
+        - cidr: 10.0.5.0/24
+          az: "{{ zone_1 }}"
+          resource_tags: {env: "{{ env }}", tier: db, az: 1, Name: "{{env}}_sn_db_1" }
+        - cidr: 10.0.6.0/24
+          az: "{{ zone_2 }}"
+          resource_tags: {env: "{{ env }}", tier: db, az: 2, Name: "{{env}}_sn_db_2" }
+      route_tables:
+        - subnets:
+          - 10.0.0.0/24
+          - 10.0.1.0/24
+          routes:
+            - dest: 0.0.0.0/0
+              gw: igw
+    register: vpc
+
+  - set_fact: vpc_id="{{ vpc.vpc_id }}"
+  - set_fact: web_tier_subnet_1="{{ vpc.subnets[0].id}}"
+  - set_fact: web_tier_subnet_2="{{ vpc.subnets[1].id}}"
+  - set_fact: db_tier_subnet_1="{{ vpc.subnets[2].id}}"
+  - set_fact: db_tier_subnet_2="{{ vpc.subnets[3].id}}"
+
+  - name: Create key pair
+    ec2_key: name="{{ env }}_key" region="{{ region }}"
+    register: keypair
+
+  - name: Write the key to a file
+    copy:
+      dest: "keys/{{ env }}_key.pem"
+      content: "{{ keypair.key.private_key }}"
+      mode: 0600
+    when: keypair.changed
+
+  - name: Create Web security group
+    ec2_group:
+      name: "{{ env }}-sg-web"
+      region: "{{ region }}"
+      description: allow web access from everywhere
+      vpc_id: "{{ vpc_id }}"
+      rules:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 0.0.0.0/0
+    register: web_sec_group
+
+  - name: Create Internal web security group
+    ec2_group:
+      name: "{{ env }}-vpc-web-internal"
+      region: "{{ region }}"
+      description: allow web access from internal network only
+      vpc_id: "{{ vpc_id }}"
+      rules:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 10.0.0.0/24
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 10.0.1.0/24
+
+  - name: Create DB security group
+    ec2_group:
+      name: "{{ env }}-sg-db"
+      region: "{{ region }}"
+      description: allow access to db from web tier
+      vpc_id: "{{ vpc_id }}"
+      rules:
+        - proto: tcp
+          from_port: 3306
+          to_port: 3306
+          cidr_ip: 10.0.0.0/24
+        - proto: tcp
+          from_port: 3306
+          to_port: 3306
+          cidr_ip: 10.0.1.0/24
+    register: db_sec_group
+
+
+  - name: Create SSH security group
+    ec2_group:
+      name: "{{ env }}-vpc-ssh"
+      region: "{{ region }}"
+      description: allow ssh access
+      vpc_id: "{{ vpc_id }}"
+      rules:
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: "{{control_ip}}"
+
+  - name: Create outbound security group
+    ec2_group:
+      name: "{{ env }}-vpc-outbound"
+      description: allow outbound connections to the internet
+      region: "{{ region }}"
+      vpc_id: "{{ vpc_id }}"
+      rules_egress:
+       - proto: all
+         cidr_ip: 0.0.0.0/0
+
+  - name: Get the ubuntu trusty AMI
+    ec2_ami_search: distro=ubuntu release=trusty virt=hvm region={{ region }}
+    register: ubuntu_image
+
+  - name: Start the zone 1 server instances
+    ec2:
+      image: "{{ ubuntu_image.ami }}"
+      region: "{{ region }}"
+      instance_type: "{{ server.instance_type }}"
+      assign_public_ip: True
+      key_name: "{{ env }}_key"
+      group: ["{{ env}}-vpc-web-internal", "{{ env}}-vpc-ssh", "{{ env}}-vpc-outbound"]
+      instance_tags: { Name: "{{ env }}-z1-web", type: webserver, env: "{{ env }}", az: 1 }
+      exact_count: "{{ server.zone_1_count }}"
+      count_tag: { type: webserver, env: "{{ env }}", az: 1 }
+      vpc_subnet_id: "{{ web_tier_subnet_1 }}"
+      zone: "{{ zone_1 }}"
+      wait: yes
+    register: ec2
+
+  - name: Wait for zone 1 servers to be reachable via SSH
+    wait_for: host={{ item.public_dns_name }} port=22 search_regex=OpenSSH
+    with_items: ec2.tagged_instances
+    when: item.public_dns_name is defined
+
+  - name: Start the zone 2 server instances
+    ec2:
+      image: "{{ ubuntu_image.ami }}"
+      region: "{{ region }}"
+      instance_type: "{{ server.instance_type }}"
+      assign_public_ip: True
+      key_name: "{{ env }}_key"
+      group: ["{{ env}}-vpc-web-internal", "{{ env}}-vpc-ssh", "{{ env}}-vpc-outbound"]
+      instance_tags: { Name: "{{ env }}-z2-web", type: webserver, env: "{{ env }}", az: 2 }
+      exact_count: "{{ server.zone_2_count }}"
+      count_tag: { type: webserver, env: "{{ env }}", az: 2 }
+      vpc_subnet_id: "{{ web_tier_subnet_2 }}"
+      zone: "{{ zone_2 }}"
+      wait: yes
+    register: ec2
+
+  - name: Wait for zone 2 servers to be reachable via SSH
+    wait_for: host={{ item.public_dns_name }} port=22 search_regex=OpenSSH
+    with_items: ec2.tagged_instances
+    when: item.public_dns_name is defined
+
+  - name: Set up load balancer
+    ec2_elb_lb:
+      name: "{{ env }}-lb"
+      region: "{{ region }}"
+      state: present
+      subnets:
+        - "{{ web_tier_subnet_1 }}"
+        - "{{ web_tier_subnet_2 }}"
+      security_group_ids: ["{{ web_sec_group.group_id }}"]
+      listeners:
+        - protocol: http
+          load_balancer_port: 80
+          instance_port: 80
+      # cannot tag ELB via ec2_elb_lb module yet
+      #tags:
+      #  - env: "{{ env }}"
+
+  - name: Create RDS subnet
+    rds_subnet_group:
+      name: "{{ env }}-db-sng"
+      region: "{{ region }}"
+      state: present
+      description: "RDS subnet group for {{ env }}"
+      subnets:
+        - "{{ db_tier_subnet_1 }}"
+        - "{{ db_tier_subnet_2 }}"
+
+  - name: Create RDS database (this can take a while)
+    rds:
+      command: create
+      instance_name: "{{ env }}-db"
+      db_engine: MySQL
+      size: "{{ db.size }}"
+      instance_type: "{{ db.instance_type }}"
+      multi_zone: yes
+      username: "{{ db.user }}"
+      password: "{{ db.password }}"
+      tags: { Name: "{{ env }}-db", type: db, env: "{{ env }}" }
+      subnet: "{{ env }}-db-sng"
+      vpc_security_groups: ["{{ db_sec_group.group_id }}"]
+      wait: yes
+      wait_timeout: 1200
