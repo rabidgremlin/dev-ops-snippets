@@ -4,7 +4,9 @@
 Vagrant.configure(2) do |config|
 
   config.vm.box = "ubuntu/trusty32"
-  config.vm.hostname = "ansiblecontrolhost"
+  config.vm.hostname = "simplenginx"
+  config.vm.network "forwarded_port", guest: 80, host: 8989
+  config.vm.synced_folder "www/", "/var/www-on-host", owner: "root", group: "root"
   
   config.vm.provider "virtualbox" do |vb|  
     vb.memory = "512"

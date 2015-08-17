@@ -1,0 +1,17 @@
+server {
+        listen 80 default_server;
+        
+        # this is to avoid virtualbox bug
+        sendfile off;
+
+        root /var/www-on-host/;
+        
+        index index.html ;
+
+        server_name _;
+
+        location / {
+                try_files $uri $uri/ =404;
+        }
+
+}
