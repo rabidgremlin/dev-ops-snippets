@@ -1,6 +1,6 @@
 
 - name: Configure Web servers
-  hosts: tag_type_webservers:&tag_env_{{ env }}
+  hosts: tag_type_webserver:&tag_env_{{ env }}
   user: ubuntu
   sudo: True
   serial: "25%"
