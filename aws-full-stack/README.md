@@ -16,7 +16,9 @@ Basic usage
   ```
   ansible-playbook -i inventory/ec2.py deploy.yml -e "env=example" --private-key keys/example_key.pem
   ```
-  Note you may need to wait 1min for the inventory cache to clear or you can run ```python inventory/ec2.py --refresh-cache``` first
+  Note you may need to wait 1 min for the inventory cache to clear or you can run ```python inventory/ec2.py --refresh-cache``` first
+5. Use the AWS console to get the DNS name of the load balancer and open it your browser
+
 
 Initial set up
 ==============
@@ -88,4 +90,6 @@ db:
 
 TODOs
 =====
-TBD
+* Improve the handlers in deploy playbook so things are not restarted AFTER instance is added back into load balancer
+* Figure out how to give each server a unique sequence number in it's name
+* Add tags to ELB (not supported by Ansible yet)
