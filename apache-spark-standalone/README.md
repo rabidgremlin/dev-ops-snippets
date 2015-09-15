@@ -1,5 +1,5 @@
 # Apache Spark Standalone
-This vagrant script will set up Apache Spark in standalone mode. Useful experimentation or "little data" processing.
+This vagrant script will set up Apache Spark in standalone mode. Useful for experimentation or "little data" processing.
 
 Execute
 ```
