@@ -6,15 +6,22 @@ Execute
 vagrant up
 ```
 
-to start the VM. Then try
+to start the VM, ```vagrant ssh``` into it and then try:
 
 ```
-vagrant ssh
-cd spark-1.5.0-bin-hadoop2.6
+cd ~/spark-1.5.0-bin-hadoop2.6
 ./bin/pyspark
 testFile = sc.textFile("README.md")
 testFile.count()
 ```
 
 Press ```CTRL+D``` to exit the pyspark shell
+
+or
+
+```
+cd ~/spark-1.5.0-bin-hadoop2.6
+./bin/spark-submit --master local /vagrant/simpleapp.py
+```
+
 
