@@ -1,0 +1,19 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure(2) do |config|
+
+  config.vm.box = "ubuntu/trusty32"
+  config.vm.hostname = "mysql-db"
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "512"
+    # hack to work around Ubuntu + Inetl +14.04 bug . See https://github.com/mitchellh/vagrant/issues/3860#issuecomment-167664778
+    vb.customize ["modifyvm", :id, "--nictype1", "Am79C973"]
+  end
+
+  config.vm.provision "shell", path: "bootstrap.sh"
+
+  config.vm.network "forwarded_port", guest: 3306, host: 3306
+
+end
